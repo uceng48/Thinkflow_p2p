@@ -1,0 +1,38 @@
+name: Build Client (Android)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Capacitor
+        run: |
+          cd capacitor
+          npm install
+          npx cap add android
+
+      - name: Sync Capacitor
+        run: |
+          cd capacitor
+          npx cap sync
+
+      - name: Build Android APK
+        run: |
+          cd capacitor/android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ThinkFlow-Client
+          path: capacitor/android/app/build/outputs/apk/debug/*.apk
