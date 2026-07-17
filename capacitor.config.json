@@ -1,0 +1,19 @@
+{
+  "appId": "com.thinkflow.p2p",
+  "appName": "ThinkFlow",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "minSdkVersion": 23,
+    "targetSdkVersion": 33,
+    "permissions": [
+      "android.permission.CAMERA",
+      "android.permission.INTERNET",
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.WRITE_EXTERNAL_STORAGE"
+    ]
+  }
+}
