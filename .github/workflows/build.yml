@@ -21,19 +21,29 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install Capacitor and Android SDK
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli
+
+      - name: Install Android SDK
         run: |
-          npm install -g @capacitor/cli
           sudo apt-get update
           sudo apt-get install -y openjdk-17-jdk wget unzip
+          mkdir -p android-sdk
+          cd android-sdk
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip commandlinetools-linux-9477386_latest.zip -d android-sdk
-          mkdir -p android-sdk/cmdline-tools
-          mv android-sdk/cmdline-tools android-sdk/cmdline-tools/latest
-          export ANDROID_HOME=$PWD/android-sdk
+          unzip commandlinetools-linux-9477386_latest.zip
+          # Struktur: setelah unzip ada folder cmdline-tools
+          mkdir -p cmdline-tools/latest
+          mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true
+          rmdir cmdline-tools 2>/dev/null || true
+          export ANDROID_HOME=$PWD
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
           yes | sdkmanager --licenses
           sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+          # Set environment for next steps
+          echo "ANDROID_HOME=$PWD" >> $GITHUB_ENV
+          echo "$PWD/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$PWD/platform-tools" >> $GITHUB_PATH
 
       - name: Build Capacitor Android
         run: |
