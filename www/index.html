@@ -9,7 +9,120 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* SAMA SEPERTI SEBELUMNYA – TAMBAHKAN DI BAWAH UNTUK LOADING */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f0f2f5;
+            padding: 16px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            max-width: 520px;
+            width: 100%;
+            background: white;
+            border-radius: 24px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            margin-bottom: 16px;
+        }
+        h1 { font-size: 1.4rem; font-weight: 700; color: #075E54; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .mode-selector { display: flex; gap: 10px; margin-bottom: 16px; }
+        .mode-selector button {
+            flex: 1; padding: 10px; border: 2px solid #ddd; border-radius: 12px;
+            background: white; font-weight: 600; cursor: pointer; transition: 0.2s; font-family: inherit;
+        }
+        .mode-selector button.active { border-color: #25D366; background: #e8f5e9; }
+        .mode-selector button:active { transform: scale(0.96); }
+        .hidden { display: none !important; }
+        .peer-section { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+        .peer-section input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 30px; font-size: 0.9rem; min-width: 120px; }
+        .peer-section button { padding: 10px 18px; background: #25D366; color: white; border: none; border-radius: 30px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; }
+        .peer-section button:active { transform: scale(0.95); }
+        .status { font-size: 0.85rem; color: #555; margin-bottom: 12px; padding: 8px 12px; background: #f8f9fa; border-radius: 12px; }
+        .status strong { color: #075E54; }
+
+        .folder-section { background: #f8f9fa; border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+        .folder-section button { padding: 10px 20px; background: #128C7E; color: white; border: none; border-radius: 30px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .folder-section button:active { transform: scale(0.95); }
+        .folder-path { font-size: 0.8rem; color: #666; margin-top: 6px; word-break: break-all; }
+        .index-status { font-size: 0.8rem; color: #075E54; margin-top: 6px; }
+        .update-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+        .update-actions button {
+            padding: 8px 16px; border: none; border-radius: 30px; font-weight: 600;
+            cursor: pointer; font-family: inherit; transition: 0.2s;
+        }
+        .update-actions button:active { transform: scale(0.95); }
+        .btn-reload { background: #128C7E; color: white; }
+        .btn-auto { background: #6c757d; color: white; }
+        .btn-auto.on { background: #28a745; }
+        #update-status { font-size: 0.8rem; color: #666; margin-top: 4px; }
+
+        .db-list { max-height: 300px; overflow-y: auto; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; }
+        .db-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+        .db-item img { width: 50px; height: 50px; object-fit: cover; border-radius: 8px; background: #eee; }
+        .db-item .info { flex: 1; }
+        .db-item .info .name { font-weight: 700; color: #075E54; }
+        .db-item .info .meta { font-size: 0.8rem; color: #555; }
+
+        .scan-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .scan-buttons button {
+            flex: 1; min-width: 60px; padding: 10px 6px; border: none; border-radius: 30px;
+            font-weight: 600; color: white; cursor: pointer; font-family: inherit; font-size: 0.8rem;
+        }
+        .scan-buttons button:active { transform: scale(0.95); }
+        .btn-qr { background: #3b82f6; }
+        .btn-barcode { background: #f59e0b; }
+        .btn-ocr { background: #8b5cf6; }
+        .btn-img { background: #ef4444; }
+        .btn-manual { background: #10b981; }
+
+        .result-box {
+            background: #f8f9fa; border-radius: 16px; padding: 16px;
+            margin-top: 12px; min-height: 100px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+        }
+        .result-box img { max-width: 100%; max-height: 200px; border-radius: 12px; margin-top: 8px; }
+        .result-box .label { font-size: 1.2rem; font-weight: 600; color: #075E54; }
+        .result-box .code { font-size: 1.4rem; font-weight: 700; color: #1a1a1a; }
+        .result-box .hint { color: #999; font-size: 0.9rem; }
+        .result-box .meta { font-size: 0.9rem; color: #333; margin-top: 4px; white-space: pre-wrap; }
+
+        .history { margin-top: 16px; border-top: 1px solid #eee; padding-top: 12px; max-height: 150px; overflow-y: auto; }
+        .history div { padding: 4px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.8rem; color: #555; }
+
+        .scanner-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000;
+            display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px;
+        }
+        .scanner-overlay.open { display: flex; }
+        .scanner-box {
+            background: white; border-radius: 24px; max-width: 500px; width: 100%; overflow: hidden;
+        }
+        .scanner-box .header {
+            padding: 12px 16px; background: #075E54; color: white;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .scanner-box .header h3 { font-size: 1rem; }
+        .scanner-box .header button {
+            background: rgba(255,255,255,0.2); border: none; color: white;
+            width: 36px; height: 36px; border-radius: 50%; font-size: 1.2rem; cursor: pointer;
+        }
+        .scanner-box #scanner-video { width: 100%; aspect-ratio: 1/1; background: #000; }
+        .scanner-box .footer { padding: 10px; text-align: center; font-size: 0.8rem; color: #666; }
+
+        #ocr-video, #imgscan-video { width: 100%; aspect-ratio: 1/1; background: #000; object-fit: cover; border-radius: 12px; }
+        .ocr-capture-btn, .img-capture-btn {
+            display: block; width: 80%; margin: 12px auto; padding: 12px;
+            border: none; border-radius: 40px; font-weight: 700; font-size: 1rem; color: white; cursor: pointer;
+        }
+        .ocr-capture-btn { background: #8b5cf6; }
+        .img-capture-btn { background: #ef4444; }
+        .ocr-capture-btn:active, .img-capture-btn:active { transform: scale(0.95); }
+        .ocr-status, .imgscan-status { text-align: center; padding: 8px; font-size: 0.8rem; color: #666; }
+
         .loading-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9998;
             display: none; align-items: center; justify-content: center;
@@ -26,8 +139,13 @@
             margin: 0 auto 12px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        /* tambahan untuk toast */
-        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #075E54; color: white; padding: 12px 24px; border-radius: 40px; font-weight: 500; z-index: 9999; animation: fadeIn 0.3s; box-shadow: 0 4px 20px rgba(0,0,0,0.2); max-width: 90%; text-align: center; }
+
+        .toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: #075E54; color: white; padding: 12px 24px; border-radius: 40px;
+            font-weight: 500; z-index: 9999; animation: fadeIn 0.3s;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2); max-width: 90%; text-align: center;
+        }
         .toast.error { background: #e74c3c; }
         @keyframes fadeIn { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
     </style>
@@ -120,32 +238,50 @@
 
 <script>
 // ============================================================
-//  NOTIFIKASI SUARA
+//  NOTIFIKASI SUARA (Perbaikan)
 // ============================================================
+let audioCtx = null;
+
+function getAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    // Pastikan audio context resumed (karena autoplay policy)
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(e => console.warn('AudioContext resume gagal:', e));
+    }
+    return audioCtx;
+}
+
 function playBeep(type) {
     try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
+        const ctx = getAudioContext();
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
         oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        gainNode.connect(ctx.destination);
         oscillator.type = 'sine';
+
         if (type === 'success') {
-            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
-            oscillator.frequency.setValueAtTime(1100, audioCtx.currentTime + 0.1);
-            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-            oscillator.start(audioCtx.currentTime);
-            oscillator.stop(audioCtx.currentTime + 0.3);
-        } else { // error
-            oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
-            oscillator.frequency.setValueAtTime(330, audioCtx.currentTime + 0.15);
-            gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-            oscillator.start(audioCtx.currentTime);
-            oscillator.stop(audioCtx.currentTime + 0.4);
+            // Nada naik dua kali
+            oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+            oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+            oscillator.start(ctx.currentTime);
+            oscillator.stop(ctx.currentTime + 0.25);
+        } else {
+            // Nada rendah turun
+            oscillator.frequency.setValueAtTime(440, ctx.currentTime);
+            oscillator.frequency.setValueAtTime(330, ctx.currentTime + 0.15);
+            gainNode.gain.setValueAtTime(0.4, ctx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+            oscillator.start(ctx.currentTime);
+            oscillator.stop(ctx.currentTime + 0.35);
         }
-    } catch(e) { console.warn('Suara tidak didukung'); }
+    } catch(e) {
+        console.warn('Gagal memutar suara:', e);
+    }
 }
 
 // ============================================================
@@ -155,12 +291,13 @@ function showLoading(text = 'Memproses...') {
     document.getElementById('loading-text').textContent = text;
     document.getElementById('loading-overlay').classList.add('open');
 }
+
 function hideLoading() {
     document.getElementById('loading-overlay').classList.remove('open');
 }
 
 // ============================================================
-//  PERBAIKAN AKSES KAMERA (Request Permission)
+//  PERMINTAAN IZIN KAMERA
 // ============================================================
 async function requestCameraPermission() {
     try {
@@ -168,13 +305,13 @@ async function requestCameraPermission() {
         stream.getTracks().forEach(t => t.stop());
         return true;
     } catch (e) {
-        console.warn('Izin kamera ditolak atau gagal:', e);
+        console.warn('Izin kamera ditolak:', e);
         return false;
     }
 }
 
 // ============================================================
-//  DETEKSI MODE OTOMATIS & INIT
+//  DETEKSI MODE & INIT
 // ============================================================
 const urlParams = new URLSearchParams(window.location.search);
 let mode = urlParams.get('mode') || 'server';
@@ -208,7 +345,7 @@ function setMode(m) {
     renderDB();
 }
 
-// ===== PEER CONNECTION =====
+// ===== PEER =====
 function connectPeer() {
     const id = document.getElementById('peer-id').value.trim();
     if (!id) return showToast('Masukkan ID');
@@ -296,10 +433,11 @@ function handleData(data) {
                 sendToPeer({ type: 'result', data: result });
                 if (result) { showToast('📤 Dikirim: ' + result.name); playBeep('success'); }
                 else { showToast('❌ Tidak ditemukan', 'error'); playBeep('error'); }
-            });
+            }).catch(() => hideLoading());
         }
     } else if (data.type === 'result') {
         if (mode === 'client') {
+            hideLoading();
             displayResult(data.data);
             if (data.data) playBeep('success');
             else playBeep('error');
@@ -528,7 +666,6 @@ function displayResult(data) {
     if (!data) {
         box.innerHTML = `<div class="hint">❌ Tidak ditemukan</div>`;
         addHistory('❌ Tidak ditemukan');
-        playBeep('error');
         return;
     }
     let html = `
@@ -538,7 +675,6 @@ function displayResult(data) {
     `;
     box.innerHTML = html;
     addHistory('✅ Ditemukan: ' + data.name);
-    playBeep('success');
 }
 
 function addHistory(text) {
@@ -549,11 +685,10 @@ function addHistory(text) {
     if (el.children.length > 20) el.removeChild(el.lastChild);
 }
 
-// ===== SCAN FUNCTIONS (dengan perbaikan kamera) =====
+// ===== SCAN FUNCTIONS =====
 let html5Qr = null, scanType = 'qr';
 
 async function startScan(type) {
-    // Minta izin kamera terlebih dahulu
     const hasPermission = await requestCameraPermission();
     if (!hasPermission) {
         showToast('❌ Izin kamera ditolak. Aktifkan di pengaturan.', 'error');
