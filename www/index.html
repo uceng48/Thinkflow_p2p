@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.5, user-scalable=yes">
+    <title>ThinkFlow – P2P Database</title>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* SAMA SEPERTI SEBELUMNYA – TAMBAHKAN DI BAWAH UNTUK LOADING */
+        .loading-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9998;
+            display: none; align-items: center; justify-content: center;
+        }
+        .loading-overlay.open { display: flex; }
+        .loading-spinner {
+            background: white; padding: 30px 40px; border-radius: 20px;
+            text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .spinner {
+            width: 48px; height: 48px; border: 6px solid #ddd;
+            border-top-color: #075E54; border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        /* tambahan untuk toast */
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #075E54; color: white; padding: 12px 24px; border-radius: 40px; font-weight: 500; z-index: 9999; animation: fadeIn 0.3s; box-shadow: 0 4px 20px rgba(0,0,0,0.2); max-width: 90%; text-align: center; }
+        .toast.error { background: #e74c3c; }
+        @keyframes fadeIn { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+    </style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loading-overlay">
+    <div class="loading-spinner">
+        <div class="spinner"></div>
+        <div id="loading-text" style="font-weight:600; color:#075E54;">Memproses...</div>
+    </div>
+</div>
+
+<div class="container" id="app">
+    <h1>📁 ThinkFlow – P2P Database</h1>
+    <div class="mode-selector" id="mode-selector">
+        <button id="mode-server" class="active" onclick="setMode('server')">🖥️ Server (PC)</button>
+        <button id="mode-client" onclick="setMode('client')">📱 Client (HP)</button>
+    </div>
+    <div class="peer-section">
+        <input type="text" id="peer-id" placeholder="ID Anda" value="">
+        <button onclick="connectPeer()">Hubungkan</button>
+    </div>
+    <div class="status" id="status">⏳ Belum terhubung</div>
+
+    <!-- SERVER VIEW -->
+    <div id="server-view">
+        <div class="folder-section">
+            <button onclick="selectFolder()">📂 Pilih Folder Database</button>
+            <div class="folder-path" id="folder-path">Belum ada folder dipilih</div>
+            <div class="index-status" id="index-status"></div>
+            <div class="update-actions">
+                <button class="btn-reload" onclick="reindexFolder()">🔄 Muat Ulang Sekarang</button>
+                <button class="btn-auto" id="btn-auto-update" onclick="toggleAutoUpdate()">⏸️ Auto Update: OFF</button>
+            </div>
+            <div id="update-status"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-weight:600; color:#075E54;">📂 Data Terindeks</span>
+            <span id="db-count" style="font-size:0.8rem; color:#888;">0 item</span>
+        </div>
+        <div class="db-list" id="db-list"></div>
+    </div>
+
+    <!-- CLIENT VIEW -->
+    <div id="client-view" class="hidden">
+        <div class="scan-buttons">
+            <button class="btn-qr" onclick="startScan('qr')">📷 QR</button>
+            <button class="btn-barcode" onclick="startScan('barcode')">📷 Barcode</button>
+            <button class="btn-ocr" onclick="startScan('ocr')">📷 OCR</button>
+            <button class="btn-img" onclick="startScan('img')">🖼️ Gambar</button>
+            <button class="btn-manual" onclick="manualInput()">✏️ Manual</button>
+        </div>
+        <div class="result-box" id="result-box">
+            <div class="hint">🔍 Hasil scan akan muncul di sini</div>
+        </div>
+        <div class="history" id="history-list"></div>
+    </div>
+</div>
+
+<!-- SCANNER OVERLAY (QR/Barcode) -->
+<div class="scanner-overlay" id="scanner-overlay">
+    <div class="scanner-box">
+        <div class="header"><h3 id="scanner-title">📷 Scan</h3><button onclick="closeScanner()">✕</button></div>
+        <div id="scanner-video"></div>
+        <div class="footer" id="scanner-footer">Arahkan ke kode</div>
+    </div>
+</div>
+
+<!-- OCR OVERLAY -->
+<div class="scanner-overlay" id="ocr-overlay">
+    <div class="scanner-box">
+        <div class="header" style="background:#8b5cf6;"><h3>📷 OCR - Ambil Gambar</h3><button onclick="closeOcr()">✕</button></div>
+        <video id="ocr-video" autoplay playsinline></video>
+        <button class="ocr-capture-btn" onclick="captureOcr()">📸 Ambil & Proses</button>
+        <div class="ocr-status" id="ocr-status">Arahkan ke teks, lalu tekan tombol</div>
+    </div>
+</div>
+
+<!-- IMAGE SCAN OVERLAY -->
+<div class="scanner-overlay" id="imgscan-overlay">
+    <div class="scanner-box">
+        <div class="header" style="background:#ef4444;"><h3>🖼️ Scan Gambar</h3><button onclick="closeImgScan()">✕</button></div>
+        <video id="imgscan-video" autoplay playsinline></video>
+        <button class="img-capture-btn" onclick="captureImgScan()">📸 Ambil & Cari</button>
+        <div class="imgscan-status" id="imgscan-status">Foto akan dicocokkan dengan database</div>
+    </div>
+</div>
+
+<script>
+// ============================================================
+//  NOTIFIKASI SUARA
+// ============================================================
+function playBeep(type) {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.type = 'sine';
+        if (type === 'success') {
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+            oscillator.frequency.setValueAtTime(1100, audioCtx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.3);
+        } else { // error
+            oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+            oscillator.frequency.setValueAtTime(330, audioCtx.currentTime + 0.15);
+            gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.4);
+        }
+    } catch(e) { console.warn('Suara tidak didukung'); }
+}
+
+// ============================================================
+//  LOADING INDICATOR
+// ============================================================
+function showLoading(text = 'Memproses...') {
+    document.getElementById('loading-text').textContent = text;
+    document.getElementById('loading-overlay').classList.add('open');
+}
+function hideLoading() {
+    document.getElementById('loading-overlay').classList.remove('open');
+}
+
+// ============================================================
+//  PERBAIKAN AKSES KAMERA (Request Permission)
+// ============================================================
+async function requestCameraPermission() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        stream.getTracks().forEach(t => t.stop());
+        return true;
+    } catch (e) {
+        console.warn('Izin kamera ditolak atau gagal:', e);
+        return false;
+    }
+}
+
+// ============================================================
+//  DETEKSI MODE OTOMATIS & INIT
+// ============================================================
+const urlParams = new URLSearchParams(window.location.search);
+let mode = urlParams.get('mode') || 'server';
+const isElectron = navigator.userAgent.includes('Electron');
+const isCapacitor = typeof Capacitor !== 'undefined';
+if (isElectron) mode = 'server';
+else if (isCapacitor) mode = 'client';
+if (isElectron || isCapacitor) {
+    document.getElementById('mode-selector').style.display = 'none';
+}
+
+let myId = localStorage.getItem('p2p_id') || 'server-pc';
+document.getElementById('peer-id').value = myId;
+let peer = null, conn = null;
+let peerConnected = false;
+let dbIndex = [];
+let folderHandle = null;
+
+function setMode(m) {
+    mode = m;
+    document.querySelectorAll('.mode-selector button').forEach(b => b.classList.remove('active'));
+    if (m === 'server') {
+        document.getElementById('mode-server').classList.add('active');
+        document.getElementById('server-view').classList.remove('hidden');
+        document.getElementById('client-view').classList.add('hidden');
+    } else {
+        document.getElementById('mode-client').classList.add('active');
+        document.getElementById('server-view').classList.add('hidden');
+        document.getElementById('client-view').classList.remove('hidden');
+    }
+    renderDB();
+}
+
+// ===== PEER CONNECTION =====
+function connectPeer() {
+    const id = document.getElementById('peer-id').value.trim();
+    if (!id) return showToast('Masukkan ID');
+    if (peer) peer.destroy();
+    myId = id;
+    localStorage.setItem('p2p_id', myId);
+    peer = new Peer(myId, {
+        debug: 2,
+        config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+    });
+    peer.on('open', () => {
+        updateStatus('Siap (ID: ' + myId + ')', true);
+        showToast('✅ Peer siap');
+        if (mode === 'client') {
+            const target = prompt('Masukkan ID Server (PC):');
+            if (target) {
+                const c = peer.connect(target, { reliable: true });
+                conn = c;
+                setupConnection(c);
+            }
+        }
+    });
+    peer.on('connection', (c) => {
+        if (conn) conn.close();
+        conn = c;
+        setupConnection(c);
+        showToast('🔗 Client terhubung: ' + c.peer);
+    });
+    peer.on('error', (err) => {
+        console.error(err);
+        if (err.type === 'peer-unavailable') showToast('❌ ID tidak ditemukan', 'error');
+        else showToast('❌ Error: ' + err.message, 'error');
+        updateStatus('Error', false);
+    });
+    peer.on('disconnected', () => {
+        updateStatus('Terputus', false);
+        showToast('⚠️ Koneksi terputus', 'error');
+    });
+}
+
+function setupConnection(c) {
+    c.on('open', () => {
+        peerConnected = true;
+        updateStatus('Terhubung dengan: ' + c.peer, true);
+        showToast('✅ Koneksi aktif');
+    });
+    c.on('data', (data) => handleData(data));
+    c.on('close', () => {
+        peerConnected = false;
+        updateStatus('Koneksi ditutup', false);
+        showToast('🔌 Koneksi ditutup', 'error');
+    });
+    c.on('error', (e) => { console.error(e); showToast('❌ Error koneksi', 'error'); });
+}
+
+function sendToPeer(data) {
+    if (!conn || !conn.open) {
+        showToast('❌ Tidak ada koneksi aktif', 'error');
+        return false;
+    }
+    try { conn.send(data); return true; } catch(e) { showToast('❌ Gagal kirim', 'error'); return false; }
+}
+
+function updateStatus(msg, ok) {
+    const el = document.getElementById('status');
+    el.innerHTML = '🔗 ' + msg;
+    el.style.color = ok ? '#075E54' : '#e74c3c';
+}
+
+// ===== HANDLE DATA =====
+function handleData(data) {
+    console.log('📩 Received:', data);
+    if (data.type === 'query_text') {
+        if (mode === 'server') {
+            const result = searchIndex(data.text);
+            sendToPeer({ type: 'result', data: result });
+            if (result) { showToast('📤 Dikirim: ' + result.name); playBeep('success'); }
+            else { showToast('❌ Tidak ditemukan', 'error'); playBeep('error'); }
+        }
+    } else if (data.type === 'query_image') {
+        if (mode === 'server') {
+            showLoading('Mencocokkan gambar...');
+            processImageQuery(data.image).then(result => {
+                hideLoading();
+                sendToPeer({ type: 'result', data: result });
+                if (result) { showToast('📤 Dikirim: ' + result.name); playBeep('success'); }
+                else { showToast('❌ Tidak ditemukan', 'error'); playBeep('error'); }
+            });
+        }
+    } else if (data.type === 'result') {
+        if (mode === 'client') {
+            displayResult(data.data);
+            if (data.data) playBeep('success');
+            else playBeep('error');
+        }
+    }
+}
+
+// ===== SERVER: INDEKS FOLDER =====
+async function selectFolder() {
+    if (!('showDirectoryPicker' in window)) {
+        showToast('❌ Browser tidak mendukung File System Access API. Gunakan Chrome/Edge.', 'error');
+        return;
+    }
+    try {
+        folderHandle = await window.showDirectoryPicker();
+        document.getElementById('folder-path').textContent = '📂 ' + folderHandle.name;
+        if (isAutoUpdateOn) toggleAutoUpdate();
+        await indexFolder(folderHandle);
+        showToast('✅ Folder terindeks: ' + folderHandle.name);
+    } catch (e) {
+        if (e.name !== 'AbortError') {
+            showToast('❌ Gagal memilih folder', 'error');
+            console.error(e);
+        }
+    }
+}
+
+async function indexFolder(handle) {
+    document.getElementById('index-status').textContent = '⏳ Mengindeks folder...';
+    dbIndex = [];
+    await walkDir(handle);
+    document.getElementById('index-status').textContent = '✅ Terindeks: ' + dbIndex.length + ' item';
+    renderDB();
+    localStorage.setItem('dbIndexLength', dbIndex.length);
+}
+
+async function walkDir(handle, path = '') {
+    const entries = [];
+    for await (const entry of handle.values()) { entries.push(entry); }
+    const imageFiles = entries.filter(e => e.kind === 'file' && /\.(jpg|jpeg|png|webp)$/i.test(e.name));
+    const textFiles = entries.filter(e => e.kind === 'file' && /\.(txt|csv|json)$/i.test(e.name));
+
+    for (const imgFile of imageFiles) {
+        const baseName = imgFile.name.replace(/\.[^.]+$/, '');
+        const textFile = textFiles.find(t => t.name.replace(/\.[^.]+$/, '') === baseName);
+        let textContent = '';
+        if (textFile) {
+            try { const file = await textFile.getFile(); textContent = await file.text(); } catch(e) {}
+        }
+        try {
+            const file = await imgFile.getFile();
+            const imageData = await readFileAsDataURL(file);
+            const hash = await getImageHash(imageData);
+            let ocrText = '';
+            try { const result = await Tesseract.recognize(imageData, 'ind'); ocrText = result.data.text.trim(); } catch(e) {}
+            dbIndex.push({
+                id: Date.now() + '_' + Math.random().toString(36).slice(2,6),
+                name: imgFile.name,
+                path: path + '/' + imgFile.name,
+                imageData: imageData,
+                textContent: textContent,
+                ocrText: ocrText,
+                hash: hash,
+                metadata: { textFile: textFile ? textFile.name : null }
+            });
+        } catch(e) { console.error('Gagal baca file:', imgFile.name, e); }
+    }
+    for (const entry of entries) {
+        if (entry.kind === 'directory') { await walkDir(entry, path + '/' + entry.name); }
+    }
+}
+
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function getImageHash(dataUrl) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 8; canvas.height = 8;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, 8, 8);
+            const data = ctx.getImageData(0, 0, 8, 8).data;
+            let gray = [], total = 0;
+            for (let i=0; i<64; i++) {
+                const r = data[i*4], g = data[i*4+1], b = data[i*4+2];
+                const val = 0.299*r + 0.587*g + 0.114*b;
+                gray.push(val); total += val;
+            }
+            const avg = total / 64;
+            let hash = '';
+            for (let i=0; i<64; i++) hash += (gray[i] >= avg) ? '1' : '0';
+            resolve(hash);
+        };
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+    });
+}
+
+function hammingDistance(a, b) {
+    if (!a || !b || a.length !== b.length) return 999;
+    let d = 0;
+    for (let i=0; i<a.length; i++) if (a[i] !== b[i]) d++;
+    return d;
+}
+
+// ===== PENCARIAN =====
+function searchIndex(query) {
+    if (!query) return null;
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    let best = null, bestScore = 0;
+    for (const item of dbIndex) {
+        let score = 0;
+        if (item.name.toLowerCase().includes(q)) score += 10;
+        if (item.textContent.toLowerCase().includes(q)) score += 8;
+        if (item.ocrText && item.ocrText.toLowerCase().includes(q)) score += 6;
+        const words = q.split(/\s+/);
+        for (const w of words) {
+            if (w.length > 2) {
+                if (item.name.toLowerCase().includes(w)) score += 3;
+                if (item.textContent.toLowerCase().includes(w)) score += 2;
+                if (item.ocrText && item.ocrText.toLowerCase().includes(w)) score += 1;
+            }
+        }
+        if (score > bestScore) { bestScore = score; best = item; }
+    }
+    if (best && bestScore >= 3) return best;
+    return null;
+}
+
+async function processImageQuery(imageDataUrl) {
+    const queryHash = await getImageHash(imageDataUrl);
+    if (!queryHash) return null;
+    let bestMatch = null, bestDist = 999;
+    for (const item of dbIndex) {
+        if (item.hash) {
+            const dist = hammingDistance(queryHash, item.hash);
+            if (dist < bestDist) { bestDist = dist; bestMatch = item; }
+        }
+    }
+    if (bestMatch && bestDist <= 12) return bestMatch;
+    try {
+        const result = await Tesseract.recognize(imageDataUrl, 'ind');
+        const text = result.data.text.trim();
+        if (text) return searchIndex(text);
+    } catch(e) {}
+    return null;
+}
+
+// ===== RENDER DB =====
+function renderDB() {
+    const list = document.getElementById('db-list');
+    const count = document.getElementById('db-count');
+    count.textContent = dbIndex.length + ' item';
+    if (dbIndex.length === 0) {
+        list.innerHTML = '<div style="color:#999; padding:12px; text-align:center;">Belum ada data terindeks</div>';
+        return;
+    }
+    let html = '';
+    dbIndex.slice(0, 20).forEach(item => {
+        html += `
+            <div class="db-item">
+                <img src="${item.imageData}" onerror="this.style.display='none'">
+                <div class="info">
+                    <div class="name">${item.name}</div>
+                    <div class="meta">${item.textContent ? item.textContent.slice(0, 60) : 'Tidak ada teks'}</div>
+                </div>
+            </div>
+        `;
+    });
+    list.innerHTML = html;
+}
+
+// ===== AUTO UPDATE =====
+let autoUpdateInterval = null, isAutoUpdateOn = false;
+async function reindexFolder() {
+    if (!folderHandle) { showToast('⚠️ Pilih folder terlebih dahulu!', 'error'); return; }
+    document.getElementById('update-status').textContent = '⏳ Memuat ulang indeks...';
+    await indexFolder(folderHandle);
+    document.getElementById('update-status').textContent = '✅ Terakhir diperbarui: ' + new Date().toLocaleTimeString();
+    showToast('🔄 Database diperbarui (' + dbIndex.length + ' item)');
+}
+function toggleAutoUpdate() {
+    const btn = document.getElementById('btn-auto-update');
+    if (isAutoUpdateOn) {
+        clearInterval(autoUpdateInterval); autoUpdateInterval = null; isAutoUpdateOn = false;
+        btn.textContent = '▶️ Auto Update: OFF'; btn.className = 'btn-auto';
+        document.getElementById('update-status').textContent = 'Auto Update dimatikan';
+    } else {
+        if (!folderHandle) { showToast('⚠️ Pilih folder dulu!', 'error'); return; }
+        isAutoUpdateOn = true; btn.textContent = '⏸️ Auto Update: ON (10s)'; btn.className = 'btn-auto on';
+        document.getElementById('update-status').textContent = '⏳ Auto Update aktif (setiap 10 detik)';
+        reindexFolder();
+        autoUpdateInterval = setInterval(() => reindexFolder(), 10000);
+    }
+}
+
+// ===== CLIENT FUNCTIONS =====
+function sendTextQuery(text) {
+    if (!conn || !conn.open) { showToast('❌ Belum terhubung ke server', 'error'); return; }
+    sendToPeer({ type: 'query_text', text: text });
+    addHistory('🔍 Query: ' + text);
+    document.getElementById('result-box').innerHTML = `<div class="hint">⏳ Mencari...</div>`;
+    showLoading('Mencari data...');
+}
+
+function sendImageQuery(imageData) {
+    if (!conn || !conn.open) { showToast('❌ Belum terhubung ke server', 'error'); return; }
+    sendToPeer({ type: 'query_image', image: imageData });
+    addHistory('🖼️ Query gambar');
+    document.getElementById('result-box').innerHTML = `<div class="hint">⏳ Mencocokkan...</div>`;
+    showLoading('Mencocokkan gambar...');
+}
+
+function displayResult(data) {
+    hideLoading();
+    const box = document.getElementById('result-box');
+    if (!data) {
+        box.innerHTML = `<div class="hint">❌ Tidak ditemukan</div>`;
+        addHistory('❌ Tidak ditemukan');
+        playBeep('error');
+        return;
+    }
+    let html = `
+        <div class="code">${data.name}</div>
+        <div class="label">📄 ${data.textContent ? data.textContent : 'Tidak ada teks'}</div>
+        <img src="${data.imageData}" alt="${data.name}">
+    `;
+    box.innerHTML = html;
+    addHistory('✅ Ditemukan: ' + data.name);
+    playBeep('success');
+}
+
+function addHistory(text) {
+    const el = document.getElementById('history-list');
+    const div = document.createElement('div');
+    div.textContent = text;
+    el.prepend(div);
+    if (el.children.length > 20) el.removeChild(el.lastChild);
+}
+
+// ===== SCAN FUNCTIONS (dengan perbaikan kamera) =====
+let html5Qr = null, scanType = 'qr';
+
+async function startScan(type) {
+    // Minta izin kamera terlebih dahulu
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) {
+        showToast('❌ Izin kamera ditolak. Aktifkan di pengaturan.', 'error');
+        return;
+    }
+
+    if (type === 'ocr') { openOcr(); return; }
+    if (type === 'img') { openImgScan(); return; }
+
+    scanType = type;
+    const overlay = document.getElementById('scanner-overlay');
+    document.getElementById('scanner-title').textContent = type === 'qr' ? '📷 Scan QR' : '📷 Scan Barcode';
+    document.getElementById('scanner-footer').textContent = 'Arahkan ke kode';
+    overlay.classList.add('open');
+
+    const videoEl = document.getElementById('scanner-video');
+    videoEl.innerHTML = '';
+    html5Qr = new Html5Qrcode("scanner-video");
+    try {
+        await html5Qr.start(
+            { facingMode: "environment" },
+            { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 },
+            (decodedText) => {
+                closeScanner();
+                sendTextQuery(decodedText);
+                showToast('✅ Scan: ' + decodedText);
+                playBeep('success');
+            },
+            () => {}
+        );
+    } catch(err) {
+        console.error(err);
+        showToast('❌ Gagal akses kamera', 'error');
+        closeScanner();
+    }
+}
+
+function closeScanner() {
+    if (html5Qr) { try { html5Qr.stop().then(() => { html5Qr.clear(); html5Qr = null; }).catch(()=>{}); } catch(e) {} }
+    document.getElementById('scanner-overlay').classList.remove('open');
+    document.getElementById('scanner-video').innerHTML = '';
+}
+
+// OCR
+let ocrStream = null;
+function openOcr() {
+    document.getElementById('ocr-overlay').classList.add('open');
+    navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } },
+        audio: false
+    }).then(stream => {
+        ocrStream = stream;
+        const video = document.getElementById('ocr-video');
+        video.srcObject = stream;
+        return video.play();
+    }).then(() => {
+        document.getElementById('ocr-status').textContent = '📸 Arahkan ke teks, lalu tekan tombol';
+    }).catch(err => {
+        showToast('❌ Gagal akses kamera', 'error');
+        closeOcr();
+    });
+}
+
+function closeOcr() {
+    if (ocrStream) { ocrStream.getTracks().forEach(t => t.stop()); ocrStream = null; }
+    document.getElementById('ocr-overlay').classList.remove('open');
+    document.getElementById('ocr-video').srcObject = null;
+    document.getElementById('ocr-status').textContent = 'Arahkan ke teks, lalu tekan tombol';
+}
+
+async function captureOcr() {
+    const video = document.getElementById('ocr-video');
+    if (!video.videoWidth || !video.videoHeight) { showToast('❌ Kamera belum siap', 'error'); return; }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+    showLoading('OCR memproses...');
+    document.getElementById('ocr-status').textContent = '⏳ OCR...';
+    try {
+        const result = await Tesseract.recognize(imageDataUrl, 'ind', {
+            logger: (m) => { if (m.status === 'recognizing text') document.getElementById('ocr-status').textContent = `⏳ ${Math.round(m.progress * 100)}%`; }
+        });
+        const text = result.data.text.trim();
+        closeOcr();
+        hideLoading();
+        if (text) {
+            sendTextQuery(text);
+            showToast('📝 OCR: ' + text);
+            playBeep('success');
+        } else {
+            showToast('⚠️ Tidak ada teks terdeteksi', 'error');
+            playBeep('error');
+        }
+    } catch(e) {
+        console.error(e);
+        hideLoading();
+        document.getElementById('ocr-status').textContent = '❌ Gagal OCR';
+        showToast('❌ Gagal OCR', 'error');
+        playBeep('error');
+    }
+}
+
+// IMAGE SCAN
+let imgStream = null;
+function openImgScan() {
+    document.getElementById('imgscan-overlay').classList.add('open');
+    navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 640 } },
+        audio: false
+    }).then(stream => {
+        imgStream = stream;
+        const video = document.getElementById('imgscan-video');
+        video.srcObject = stream;
+        return video.play();
+    }).then(() => {
+        document.getElementById('imgscan-status').textContent = '📸 Ambil gambar untuk dicocokkan';
+    }).catch(err => {
+        showToast('❌ Gagal akses kamera', 'error');
+        closeImgScan();
+    });
+}
+
+function closeImgScan() {
+    if (imgStream) { imgStream.getTracks().forEach(t => t.stop()); imgStream = null; }
+    document.getElementById('imgscan-overlay').classList.remove('open');
+    document.getElementById('imgscan-video').srcObject = null;
+    document.getElementById('imgscan-status').textContent = 'Foto akan dicocokkan dengan database';
+}
+
+async function captureImgScan() {
+    const video = document.getElementById('imgscan-video');
+    if (!video.videoWidth || !video.videoHeight) { showToast('❌ Kamera belum siap', 'error'); return; }
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    document.getElementById('imgscan-status').textContent = '⏳ Mencocokkan...';
+    closeImgScan();
+    sendImageQuery(imageDataUrl);
+}
+
+// ===== MANUAL INPUT =====
+function manualInput() {
+    const input = prompt('Masukkan kode / nama / angka:');
+    if (input && input.trim()) sendTextQuery(input.trim());
+}
+
+// ===== TOAST =====
+function showToast(msg, type) {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    const t = document.createElement('div');
+    t.className = 'toast' + (type === 'error' ? ' error' : '');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+}
+
+// ===== INIT =====
+setMode(mode);
+if (myId) setTimeout(connectPeer, 500);
+console.log('🚀 ThinkFlow P2P siap, mode:', mode);
+</script>
+</body>
+</html>
