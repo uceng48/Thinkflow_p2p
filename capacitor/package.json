@@ -1,0 +1,13 @@
+{
+  "name": "thinkflow-client",
+  "version": "1.0.0",
+  "description": "Client P2P Database ThinkFlow",
+  "scripts": {
+    "build": "npx cap sync",
+    "open:android": "npx cap open android"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^5.0.0",
+    "@capacitor/android": "^5.0.0"
+  }
+}
