@@ -1,0 +1,14 @@
+{
+  "appId": "com.thinkflow.client",
+  "appName": "ThinkFlow Client",
+  "webDir": "../src",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true
+    }
+  }
+}
